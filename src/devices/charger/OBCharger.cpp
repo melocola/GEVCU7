@@ -1,6 +1,7 @@
 #include "OBCharger.h"
 
-using namespace std;
+// Certain commands need to be done every 100 miliseconds but we tick at a rate of 10
+int tickCount = 0;
 
 OBChargerController::OBChargerController() : ChargeController()
 {
@@ -31,8 +32,8 @@ void OBChargerController::setup()
     setAttachedCANBus(config->canbusNum);
 
     //watch for the charger status message
-    attachedCANBus->attach(this, 0x319, 0x7f8, false);
-    attachedCANBus->attach(this, 0x349, 0x7f8, false);
+    attachedCANBus->attach(this, 0x318, 0x7f8, false);
+    attachedCANBus->attach(this, 0x348, 0x7f8, false);
 
     tickHandler.attach(this, CFG_TICK_INTERVAL_OB);
     crashHandler.addBreadcrumb(ENCODE_BREAD("OBC") + 0);
@@ -46,7 +47,7 @@ void OBChargerController::handleCanFrame(const CAN_message_t &frame)
                   frame.buf[5],frame.buf[6],frame.buf[7]);
     
     switch (frame.id)
-    if (frame.id == 0x319 || frame.id == 0x349)
+    if (frame.id == 0x318 || frame.id == 0x348)
     {
         outputVoltage = (frame.buf[0] << 8) + (frame.buf[1]) / 10.0f;
         outputCurrent = (frame.buf[2] << 8) + (frame.buf[3]) / 10.0f;
@@ -67,8 +68,14 @@ void OBChargerController::handleTick()
 {
     ChargeController::handleTick();
     
-    sendSleepModeCmd();
-    sendPowerCmd();
+    // sendWakeUpCmd();
+    if (++tickCount % 10 == 0)
+    {
+        sendSleepModeCmd();
+        sendHVOutputCmd();
+        tickCount = 0;
+    }
+    sendHVOutputCmd();
 }
 
 void OBChargerController::sendPowerCmd()
@@ -80,14 +87,14 @@ void OBChargerController::sendPowerCmd()
     output.id = 0x305;
     output.flags.extended = 1;
 
-    uint16_t vOutput = config->targetUpperVoltage * 275;
-    uint16_t cOutput = config->targetCurrentLimit * 16;
+    uint16_t vOutput = config->targetUpperVoltage * 10;
+    uint16_t cOutput = config->targetCurrentLimit * 10;
 
-    output.buf[0] = (vOutput >> 8);
-    output.buf[1] = (vOutput & 0xFF);
-    output.buf[2] = (cOutput >> 8);
-    output.buf[3] = (cOutput & 0xFF);
-    output.buf[4] = 0; // 0 = start charging
+    output.buf[0] = (vOutput >> 8); //Voltage
+    output.buf[1] = (vOutput & 0xFF); //Voltage
+    output.buf[2] = (cOutput >> 8); //Alleged Current
+    output.buf[3] = (cOutput & 0xFF); //Alleged Current
+    output.buf[4] = 3; //Alleged maximum allowed power
     output.buf[5] = 0; //unused
     output.buf[6] = 0; //unused
     output.buf[7] = 0; //unused
@@ -131,7 +138,13 @@ void OBChargerController::sendSleepModeCmd()
     output.id = 0x261;
     output.flags.extended = 1;
 
-    output.buf[0] = 0x80; //unused
+    uint8_t sleep = 0;
+    if(SLEEP_SETTING)
+    {
+        sleep = 0x80;
+    }
+
+    output.buf[0] = sleep; //unused
     output.buf[1] = 0; //unused
     output.buf[2] = 0; //unused
     output.buf[3] = 0; //unused
@@ -158,11 +171,17 @@ void OBChargerController::sendHVOutputCmd()
     uint16_t vOutput = config->targetUpperVoltage * 10;
     uint16_t cOutput = config->targetCurrentLimit * 10;
 
+    uint8_t hv = 0;
+    if(HV_SETTING)
+    {
+        hv = 8;
+    }
+
     output.buf[0] = 0; //unused
     output.buf[1] = 0; //unused
     output.buf[2] = 0; //unused
     output.buf[3] = 0; //unused
-    output.buf[4] = 0x08;
+    output.buf[4] = hv; 
     output.buf[5] = 0; //unused
     output.buf[6] = 0; //unused
     output.buf[7] = 0; //unused
@@ -207,15 +226,3 @@ void OBChargerController::saveConfiguration() {
 }
 
 OBChargerController OB;
-
-
-int main()
-{
-    // vector<string> msg {"Hello", "C++", "World", "from", "VS Code", "and the C++ extension!"};
-
-    // for (const string& word : msg)
-    // {
-    //     cout << word << " ";
-    // }
-    // cout << endl;
-}

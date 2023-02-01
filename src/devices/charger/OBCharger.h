@@ -35,8 +35,10 @@
 #include "../../CanHandler.h"
 #include "ChargeController.h"
 
-#define OB_CHARGER 0x1072
-#define CFG_TICK_INTERVAL_OB      100000
+#define OB_CHARGER              0x1072
+#define CFG_TICK_INTERVAL_OB    10000
+#define SLEEP_SETTING           false
+#define HV_SETTING              true
 
 /*
  * Class for Delphi DCDC specific configuration parameters
